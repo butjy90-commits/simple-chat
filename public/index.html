@@ -5,12 +5,12 @@
 <style>
 body { font-family: Arial; background:#f4f4f4; margin:0; }
 #container { display:flex; height:100vh; }
-#sidebar { width:200px; background:#333; color:white; padding:10px; box-sizing:border-box; }
+#sidebar { width:200px; background:#333; color:white; padding:10px; box-sizing:border-box; overflow-y:auto;}
 .room { padding:8px; margin:5px 0; background:#444; cursor:pointer; border-radius:5px; }
 .room:hover { background:#555; }
 .static-room { padding:8px; margin:5px 0; background:#555; border-radius:5px; color:#ccc; cursor:default; }
 #chat-area { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:10px; box-sizing:border-box; }
-#messages { width:100%; height:65%; background:white; border:1px solid #ccc; overflow-y:scroll; padding:10px; text-align:left; }
+#messages { width:100%; height:60%; background:white; border:1px solid #ccc; overflow-y:scroll; padding:10px; text-align:left; }
 .message { margin:5px 0; padding:5px 10px; border-radius:10px; max-width:80%; display:flex; align-items:center; }
 .message img { width:30px; height:30px; border-radius:50%; margin-right:8px; }
 .system { color:gray; font-style:italic; text-align:center; }
@@ -41,6 +41,7 @@ button { padding:10px; margin-left:5px; }
     <div class="static-room">Image messages</div>
     <div class="static-room">Spotify music parties</div>
     <div class="static-room">Online user list per room</div>
+    <div class="static-room">Other fun features coming soon</div>
   </div>
 
   <div id="chat-area">
@@ -50,6 +51,8 @@ button { padding:10px; margin-left:5px; }
     <div>
       <input id="input" placeholder="Type message">
       <button onclick="send()">Send</button>
+      <input type="file" id="imageInput" accept="image/*">
+      <button onclick="sendImage()">Send Image</button>
     </div>
   </div>
 
@@ -59,10 +62,18 @@ button { padding:10px; margin-left:5px; }
 <script>
 const socket = io();
 
-let username = prompt("Enter your name") || "Anonymous";
-let avatar = prompt("Enter avatar image URL (optional)") || "";
-let room = "General";
+// Load profile from localStorage
+let profile = JSON.parse(localStorage.getItem("chatProfile"));
+if(!profile){
+    const username = prompt("Enter your name") || "Anonymous";
+    const avatar = prompt("Enter avatar image URL (optional)") || "";
+    profile = { username, avatar };
+    localStorage.setItem("chatProfile", JSON.stringify(profile));
+}
+let username = profile.username;
+let avatar = profile.avatar;
 
+let room = "General";
 const rooms = {};
 
 function joinRoom(roomName){
@@ -77,30 +88,43 @@ const typingDiv = document.getElementById("typing");
 const roomHeader = document.getElementById("room-name");
 let typingTimeout;
 
-// Messages
 function addMessage(data){
     const div = document.createElement("div");
-    let html;
     if(data.user){
-        html = `<div class="message ${data.user===username?'user-msg':'other-msg'}">
-                    <img src="${data.avatar||'https://via.placeholder.com/30'}">
-                    <strong>${data.user}</strong>: ${data.text} <span class="time">${data.time}</span>
-                </div>`;
+        if(data.image){
+            div.innerHTML = `<div class="message ${data.user===username?'user-msg':'other-msg'}">
+                <img src="${data.avatar||'https://via.placeholder.com/30'}">
+                <strong>${data.user}</strong>: <br>
+                <img src="${data.image}" style="max-width:200px; max-height:200px; margin-top:5px;">
+                <span class="time">${data.time}</span>
+            </div>`;
+        } else {
+            div.innerHTML = `<div class="message ${data.user===username?'user-msg':'other-msg'}">
+                <img src="${data.avatar||'https://via.placeholder.com/30'}">
+                <strong>${data.user}</strong>: ${data.text} <span class="time">${data.time}</span>
+            </div>`;
+        }
     } else {
-        html = `<div class="system">${data}</div>`;
+        div.innerHTML = `<div class="system">${data}</div>`;
     }
-    div.innerHTML = html;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
 
 function send(){
-    if(input.value.trim() === "") return;
+    if(input.value.trim()==="") return;
     socket.emit("chat message", input.value);
     input.value = "";
 }
 
-// Typing
+function sendImage(){
+    const file = document.getElementById("imageInput").files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = e => socket.emit("image message", { data: e.target.result });
+    reader.readAsDataURL(file);
+}
+
 input.addEventListener("keypress", e => {
     if(e.key==="Enter") send();
     socket.emit("typing");
@@ -112,13 +136,9 @@ socket.on("typing", name => {
     typingTimeout = setTimeout(()=>typingDiv.textContent="",1000);
 });
 
-// Chat messages
 socket.on("chat message", addMessage);
-
-// System messages
 socket.on("system message", msg => addMessage(msg));
 
-// Create Room
 function createRoom(){
     const name = prompt("Enter room name");
     if(!name) return;
@@ -128,7 +148,6 @@ function createRoom(){
     if(isPublic) addRoomToSidebar(name);
 }
 
-// Update sidebar for new public rooms
 socket.on("new public room", name => addRoomToSidebar(name));
 
 function addRoomToSidebar(name){
@@ -139,23 +158,18 @@ function addRoomToSidebar(name){
     document.getElementById("sidebar").appendChild(div);
 }
 
-// Switch rooms with password check
 function switchRoom(newRoom){
     const roomData = rooms[newRoom] || {};
     if(roomData.password){
-        const entered = prompt("Enter password for " + newRoom);
-        if(entered !== roomData.password){
-            alert("Wrong password!");
-            return;
-        }
+        const entered = prompt("Enter password for "+newRoom);
+        if(entered!==roomData.password){ alert("Wrong password!"); return; }
     }
     room = newRoom;
-    roomHeader.textContent = "Room: " + room;
+    roomHeader.textContent = "Room: "+room;
     messages.innerHTML = "";
     joinRoom(room);
 }
 
-// Reset storage
 function resetStorage(){
     const key = prompt("Enter owner key to reset messages");
     socket.emit("reset storage", key);

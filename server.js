@@ -65,13 +65,25 @@ io.on("connection", (socket) => {
         io.to(user.room).emit("chat message", messageData);
     });
 
+    // Image message
+    socket.on("image message", (msg) => {
+        const user = users[socket.id];
+        if(!user) return;
+
+        const time = new Date().toLocaleTimeString();
+        const messageData = { user: user.name, image: msg.data, time, color: user.color, avatar: user.avatar };
+
+        saveMessage(user.room, messageData);
+        io.to(user.room).emit("chat message", messageData);
+    });
+
     // Typing
     socket.on("typing", () => {
         const user = users[socket.id];
         if(user) socket.to(user.room).emit("typing", user.name);
     });
 
-    // Create room (fix duplicate creation)
+    // Create room
     socket.on("create room", ({name, password, isPublic}) => {
         if(!name || rooms[name]){ // prevents duplicate or empty names
             socket.emit("system message", "Room already exists or invalid name!");

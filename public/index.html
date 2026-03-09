@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>Friend Chat</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f4f4f4;
+text-align:center;
+}
+
+#messages{
+width:450px;
+height:400px;
+margin:auto;
+background:white;
+border:1px solid #ccc;
+overflow-y:scroll;
+padding:10px;
+text-align:left;
+}
+
+.message{
+margin:5px 0;
+}
+
+.system{
+color:gray;
+font-style:italic;
+}
+
+.user{
+font-weight:bold;
+}
+
+.time{
+color:#888;
+font-size:11px;
+margin-left:5px;
+}
+
+#input{
+width:300px;
+padding:10px;
+}
+
+button{
+padding:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>Friend Chat</h2>
+
+<div id="messages"></div>
+
+<br>
+
+<input id="input" placeholder="Type message">
+<button onclick="send()">Send</button>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const socket = io();
+
+let username = prompt("Enter your name");
+
+if(!username){
+username = "Anonymous";
+}
+
+socket.emit("join", username);
+
+const messages = document.getElementById("messages");
+const input = document.getElementById("input");
+
+function addMessage(html){
+
+let div = document.createElement("div");
+div.innerHTML = html;
+
+messages.appendChild(div);
+
+messages.scrollTop = messages.scrollHeight;
+
+}
+
+socket.on("chat message", function(data){
+
+addMessage(
+"<div class='message'><span class='user'>" +
+data.user +
+"</span>: " +
+data.text +
+"<span class='time'>" +
+data.time +
+"</span></div>"
+);
+
+});
+
+socket.on("system message", function(msg){
+
+addMessage("<div class='system'>" + msg + "</div>");
+
+});
+
+function send(){
+
+if(input.value.trim()==="") return;
+
+socket.emit("chat message", input.value);
+
+input.value="";
+
+}
+
+input.addEventListener("keypress", function(e){
+if(e.key==="Enter") send();
+});
+
+</script>
+
+</body>
+</html>

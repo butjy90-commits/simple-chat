@@ -1,116 +1,191 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const fs = require("fs");
-const path = require("path");
+<!DOCTYPE html>
+<html>
+<head>
+<title>Friend Chat</title>
+<style>
+body { font-family: Arial; background:#f4f4f4; margin:0; }
+#container { display:flex; height:100vh; }
+#sidebar { width:200px; background:#333; color:white; padding:10px; box-sizing:border-box; overflow-y:auto;}
+.room { padding:8px; margin:5px 0; background:#444; cursor:pointer; border-radius:5px; }
+.room:hover { background:#555; }
+.static-room { padding:8px; margin:5px 0; background:#555; border-radius:5px; color:#ccc; cursor:default; }
+#chat-area { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:10px; box-sizing:border-box; }
+#messages { width:100%; height:60%; background:white; border:1px solid #ccc; overflow-y:scroll; padding:10px; text-align:left; }
+.message { margin:5px 0; padding:5px 10px; border-radius:10px; max-width:80%; display:flex; align-items:center; }
+.message img { width:30px; height:30px; border-radius:50%; margin-right:8px; }
+.system { color:gray; font-style:italic; text-align:center; }
+.user-msg { background:#e0e0e0; margin-left:auto; text-align:right; }
+.other-msg { background:#d0f0ff; }
+.time { color:#888; font-size:11px; margin-left:5px; }
+#input { width:70%; padding:10px; margin-top:10px; }
+button { padding:10px; margin-left:5px; }
+#typing { font-style: italic; color: gray; height:20px; margin-top:5px; }
+</style>
+</head>
+<body>
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+<div id="container">
 
-app.use(express.static("public"));
+  <div id="sidebar">
+    <h3>Rooms</h3>
+    <div class="room" onclick="switchRoom('General')">General</div>
+    <div class="room" onclick="switchRoom('Gaming')">Gaming</div>
+    <div class="room" onclick="switchRoom('Music')">Music</div>
+    <div class="room" onclick="switchRoom('Coding')">Coding</div>
+    <br>
+    <button onclick="createRoom()">Create Room</button>
+    <br><br>
+    <button onclick="resetStorage()">Reset All Messages (Owner)</button>
+    <br><br>
+    <button onclick="updateProfile()">Update Profile</button>
+    <h4>Upcoming Features</h4>
+    <div class="static-room">User profiles & avatars</div>
+    <div class="static-room">Image messages</div>
+    <div class="static-room">Spotify music parties</div>
+    <div class="static-room">Online user list per room</div>
+    <div class="static-room">Other fun features coming soon</div>
+  </div>
 
-const users = {};
-const colors = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4","#46f0f0","#f032e6","#bcf60c","#fabebe"];
-const storageFile = path.join(__dirname, "messages.json");
+  <div id="chat-area">
+    <h2 id="room-name">Room: General</h2>
+    <div id="messages"></div>
+    <div id="typing"></div>
+    <div>
+      <input id="input" placeholder="Type message">
+      <button onclick="send()">Send</button>
+      <input type="file" id="imageInput" accept="image/*">
+      <button onclick="sendImage()">Send Image</button>
+    </div>
+  </div>
 
-// Load stored messages
-let storedMessages = {};
-if (fs.existsSync(storageFile)) {
-    storedMessages = JSON.parse(fs.readFileSync(storageFile, "utf-8"));
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+
+// Load profile from localStorage
+let profile = JSON.parse(localStorage.getItem("chatProfile"));
+if(!profile){
+    const username = prompt("Enter your name") || "Anonymous";
+    const avatar = prompt("Enter avatar image URL (optional)") || "";
+    profile = { username, avatar };
+    localStorage.setItem("chatProfile", JSON.stringify(profile));
+}
+let username = profile.username;
+let avatar = profile.avatar;
+
+let room = "General";
+const rooms = {};
+
+function joinRoom(roomName){
+    socket.emit("join", {username, room: roomName, avatar});
 }
 
-// Rooms with password and public/private
-const rooms = {
-    "General": { password: "", public: true },
-    "Gaming": { password: "", public: true },
-    "Music": { password: "", public: true },
-    "Coding": { password: "", public: true }
-};
+joinRoom(room);
 
-// Save message
-function saveMessage(room, message){
-    if(!storedMessages[room]) storedMessages[room] = [];
-    storedMessages[room].push(message);
-    fs.writeFileSync(storageFile, JSON.stringify(storedMessages, null, 2));
+const messages = document.getElementById("messages");
+const input = document.getElementById("input");
+const typingDiv = document.getElementById("typing");
+const roomHeader = document.getElementById("room-name");
+let typingTimeout;
+
+function addMessage(data){
+    const div = document.createElement("div");
+    if(data.user){
+        if(data.image){
+            div.innerHTML = `<div class="message ${data.user===username?'user-msg':'other-msg'}">
+                <img src="${data.avatar||'https://via.placeholder.com/30'}">
+                <strong>${data.user}</strong>: <br>
+                <img src="${data.image}" style="max-width:200px; max-height:200px;">
+                <span class="time">${data.time}</span>
+            </div>`;
+        } else {
+            div.innerHTML = `<div class="message ${data.user===username?'user-msg':'other-msg'}">
+                <img src="${data.avatar||'https://via.placeholder.com/30'}">
+                <strong>${data.user}</strong>: ${data.text} <span class="time">${data.time}</span>
+            </div>`;
+        }
+    } else {
+        div.innerHTML = `<div class="system">${data}</div>`;
+    }
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
 }
 
-// Owner reset key
-const OWNER_KEY = "supersecret123";
+function send(){
+    if(input.value.trim()==="") return;
+    socket.emit("chat message", input.value);
+    input.value = "";
+}
 
-io.on("connection", (socket) => {
+function sendImage(){
+    const file = document.getElementById("imageInput").files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = e => socket.emit("image message", { data: e.target.result });
+    reader.readAsDataURL(file);
+}
 
-    socket.on("join", ({username, room, avatar}) => {
-        const userColor = colors[Math.floor(Math.random() * colors.length)];
-        users[socket.id] = { name: username, color: userColor, room, avatar };
-        socket.join(room);
-
-        // Send previous messages for this room
-        if(storedMessages[room]){
-            storedMessages[room].forEach(msg => socket.emit("chat message", msg));
-        }
-
-        io.to(room).emit("system message", `${username} joined ${room}`);
-    });
-
-    // Chat message
-    socket.on("chat message", (msg) => {
-        const user = users[socket.id];
-        if(!user) return;
-
-        const time = new Date().toLocaleTimeString();
-        const messageData = { user: user.name, text: msg, time, color: user.color, avatar: user.avatar };
-
-        saveMessage(user.room, messageData);
-        io.to(user.room).emit("chat message", messageData);
-    });
-
-    // Image message
-    socket.on("image message", (msg) => {
-        const user = users[socket.id];
-        if(!user) return;
-
-        const time = new Date().toLocaleTimeString();
-        const messageData = { user: user.name, image: msg.data, time, color: user.color, avatar: user.avatar };
-
-        saveMessage(user.room, messageData);
-        io.to(user.room).emit("chat message", messageData);
-    });
-
-    // Typing
-    socket.on("typing", () => {
-        const user = users[socket.id];
-        if(user) socket.to(user.room).emit("typing", user.name);
-    });
-
-    // Create room
-    socket.on("create room", ({name, password, isPublic}) => {
-        if(!name || rooms[name]){ // prevents duplicate or empty names
-            socket.emit("system message", "Room already exists or invalid name!");
-            return;
-        }
-        rooms[name] = { password: password || "", public: isPublic };
-        if(isPublic) io.emit("new public room", name);
-        socket.emit("system message", `Room "${name}" created!`);
-    });
-
-    // Reset storage
-    socket.on("reset storage", (key) => {
-        if(key === OWNER_KEY){
-            storedMessages = {};
-            fs.writeFileSync(storageFile, JSON.stringify(storedMessages, null, 2));
-            io.emit("system message", "All messages have been reset by the owner!");
-        }
-    });
-
-    socket.on("disconnect", () => {
-        const user = users[socket.id];
-        if(user){
-            io.to(user.room).emit("system message", `${user.name} left ${user.room}`);
-            delete users[socket.id];
-        }
-    });
+input.addEventListener("keypress", e => {
+    if(e.key==="Enter") send();
+    socket.emit("typing");
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Server running on port " + PORT));
+socket.on("typing", name => {
+    typingDiv.textContent = `${name} is typing...`;
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(()=>typingDiv.textContent="",1000);
+});
+
+socket.on("chat message", addMessage);
+socket.on("system message", msg => addMessage(msg));
+
+function createRoom(){
+    const name = prompt("Enter room name");
+    if(!name) return;
+    const password = prompt("Enter password (leave blank for public)");
+    const isPublic = confirm("Make this room public? (Cancel = private)");
+    socket.emit("create room", {name, password, isPublic});
+    if(isPublic) addRoomToSidebar(name);
+}
+
+socket.on("new public room", name => addRoomToSidebar(name));
+
+function addRoomToSidebar(name){
+    const div = document.createElement("div");
+    div.className = "room";
+    div.textContent = name;
+    div.onclick = ()=>switchRoom(name);
+    document.getElementById("sidebar").appendChild(div);
+}
+
+function switchRoom(newRoom){
+    const roomData = rooms[newRoom] || {};
+    if(roomData.password){
+        const entered = prompt("Enter password for "+newRoom);
+        if(entered!==roomData.password){ alert("Wrong password!"); return; }
+    }
+    room = newRoom;
+    roomHeader.textContent = "Room: "+room;
+    messages.innerHTML = "";
+    joinRoom(room);
+}
+
+function resetStorage(){
+    const key = prompt("Enter owner key to reset messages");
+    socket.emit("reset storage", key);
+}
+
+function updateProfile(){
+    const newName = prompt("Enter new name", username) || username;
+    const newAvatar = prompt("Enter new avatar URL", avatar) || avatar;
+    username = newName;
+    avatar = newAvatar;
+    localStorage.setItem("chatProfile", JSON.stringify({ username, avatar }));
+    alert("Profile updated!");
+}
+</script>
+
+</body>
+</html>

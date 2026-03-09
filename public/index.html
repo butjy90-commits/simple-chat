@@ -5,7 +5,7 @@
 <style>
 body { font-family: Arial; background:#f4f4f4; margin:0; }
 #container { display:flex; height:100vh; }
-#sidebar { width:150px; background:#333; color:white; padding:10px; box-sizing:border-box; }
+#sidebar { width:180px; background:#333; color:white; padding:10px; box-sizing:border-box; }
 .room { padding:8px; margin:5px 0; background:#444; cursor:pointer; border-radius:5px; }
 .room:hover { background:#555; }
 #chat-area { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:10px; box-sizing:border-box; }
@@ -15,7 +15,7 @@ body { font-family: Arial; background:#f4f4f4; margin:0; }
 .user-msg { background:#e0e0e0; margin-left:auto; text-align:right; }
 .other-msg { background:#d0f0ff; }
 .time { color:#888; font-size:11px; margin-left:5px; }
-#input { width:80%; padding:10px; margin-top:10px; }
+#input { width:70%; padding:10px; margin-top:10px; }
 button { padding:10px; margin-left:5px; }
 #typing { font-style: italic; color: gray; height:20px; margin-top:5px; }
 </style>
@@ -31,6 +31,8 @@ button { padding:10px; margin-left:5px; }
     <div class="room" onclick="switchRoom('Music')">Music</div>
     <div class="room" onclick="switchRoom('Coding')">Coding</div>
     <br>
+    <button onclick="createRoom()">Create Room</button>
+    <br><br>
     <button onclick="resetStorage()">Reset All Messages (Owner)</button>
   </div>
 
@@ -52,62 +54,91 @@ const socket = io();
 
 let username = prompt("Enter your name") || "Anonymous";
 let room = "General"; // default room
+const rooms = {}; // will store rooms info
 
 function joinRoom(roomName){
-  socket.emit("join", {username, room: roomName});
+    socket.emit("join", {username, room: roomName});
 }
 
-joinRoom(room); // join default room
+joinRoom(room);
 
+// DOM Elements
 const messages = document.getElementById("messages");
 const input = document.getElementById("input");
 const typingDiv = document.getElementById("typing");
 const roomHeader = document.getElementById("room-name");
-
 let typingTimeout;
 
+// Messages
 function addMessage(html){
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
 }
 
 function send(){
-  if(input.value.trim() === "") return;
-  socket.emit("chat message", input.value);
-  input.value = "";
+    if(input.value.trim() === "") return;
+    socket.emit("chat message", input.value);
+    input.value = "";
 }
 
-// Typing detection
-input.addEventListener("keypress", function(e){
-  if(e.key === "Enter") send();
-  socket.emit("typing");
+// Typing indicator
+input.addEventListener("keypress", e => {
+    if(e.key === "Enter") send();
+    socket.emit("typing");
 });
 
-socket.on("typing", function(name){
-  typingDiv.textContent = `${name} is typing...`;
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(()=> typingDiv.textContent="", 1000);
+socket.on("typing", name => {
+    typingDiv.textContent = `${name} is typing...`;
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => typingDiv.textContent="", 1000);
 });
 
 // Chat messages
-socket.on("chat message", function(data){
-  const cls = (data.user === username) ? "message user-msg" : "message other-msg";
-  addMessage(`<div class="${cls}" style="border-left:5px solid ${data.color}"><strong>${data.user}</strong>: ${data.text} <span class="time">${data.time}</span></div>`);
+socket.on("chat message", data => {
+    const cls = (data.user === username) ? "message user-msg" : "message other-msg";
+    addMessage(`<div class="${cls}" style="border-left:5px solid ${data.color}"><strong>${data.user}</strong>: ${data.text} <span class="time">${data.time}</span></div>`);
 });
 
 // System messages
-socket.on("system message", function(msg){
-  addMessage(`<div class="system">${msg}</div>`);
-});
+socket.on("system message", msg => addMessage(`<div class="system">${msg}</div>`));
 
-// Switch rooms
+// Create Room
+function createRoom(){
+    const name = prompt("Enter room name");
+    if(!name) return;
+    const password = prompt("Enter password (leave blank for public)");
+    const isPublic = confirm("Make this room public? (Cancel = private)");
+    socket.emit("create room", {name, password, isPublic});
+    if(isPublic) addRoomToSidebar(name);
+}
+
+// Update sidebar for new public rooms
+socket.on("new public room", name => addRoomToSidebar(name));
+
+function addRoomToSidebar(name){
+    const div = document.createElement("div");
+    div.className = "room";
+    div.textContent = name;
+    div.onclick = () => switchRoom(name);
+    document.getElementById("sidebar").appendChild(div);
+}
+
+// Switch rooms with password check
 function switchRoom(newRoom){
-  room = newRoom;
-  roomHeader.textContent = "Room: " + room;
-  messages.innerHTML = ""; // clear previous messages
-  joinRoom(room);
+    const roomData = rooms[newRoom] || {};
+    if(roomData.password){
+        const entered = prompt("Enter password for " + newRoom);
+        if(entered !== roomData.password){
+            alert("Wrong password!");
+            return;
+        }
+    }
+    room = newRoom;
+    roomHeader.textContent = "Room: " + room;
+    messages.innerHTML = "";
+    joinRoom(room);
 }
 
 // Reset storage button

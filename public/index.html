@@ -30,6 +30,8 @@ button { padding:10px; margin-left:5px; }
     <div class="room" onclick="switchRoom('Gaming')">Gaming</div>
     <div class="room" onclick="switchRoom('Music')">Music</div>
     <div class="room" onclick="switchRoom('Coding')">Coding</div>
+    <br>
+    <button onclick="resetStorage()">Reset All Messages (Owner)</button>
   </div>
 
   <div id="chat-area">
@@ -106,6 +108,12 @@ function switchRoom(newRoom){
   roomHeader.textContent = "Room: " + room;
   messages.innerHTML = ""; // clear previous messages
   joinRoom(room);
+}
+
+// Reset storage button
+function resetStorage(){
+    const key = prompt("Enter owner key to reset messages");
+    socket.emit("reset storage", key);
 }
 </script>
 

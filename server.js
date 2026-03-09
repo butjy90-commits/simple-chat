@@ -40,9 +40,9 @@ const OWNER_KEY = "supersecret123";
 
 io.on("connection", (socket) => {
 
-    socket.on("join", ({username, room}) => {
+    socket.on("join", ({username, room, avatar}) => {
         const userColor = colors[Math.floor(Math.random() * colors.length)];
-        users[socket.id] = { name: username, color: userColor, room };
+        users[socket.id] = { name: username, color: userColor, room, avatar };
         socket.join(room);
 
         // Send previous messages for this room
@@ -59,7 +59,7 @@ io.on("connection", (socket) => {
         if(!user) return;
 
         const time = new Date().toLocaleTimeString();
-        const messageData = { user: user.name, text: msg, time, color: user.color };
+        const messageData = { user: user.name, text: msg, time, color: user.color, avatar: user.avatar };
 
         saveMessage(user.room, messageData);
         io.to(user.room).emit("chat message", messageData);
@@ -71,10 +71,10 @@ io.on("connection", (socket) => {
         if(user) socket.to(user.room).emit("typing", user.name);
     });
 
-    // Create room
+    // Create room (fix duplicate creation)
     socket.on("create room", ({name, password, isPublic}) => {
-        if(rooms[name]){
-            socket.emit("system message", "Room already exists!");
+        if(!name || rooms[name]){ // prevents duplicate or empty names
+            socket.emit("system message", "Room already exists or invalid name!");
             return;
         }
         rooms[name] = { password: password || "", public: isPublic };

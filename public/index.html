@@ -36,6 +36,8 @@ button { padding:10px; margin-left:5px; }
     <button onclick="createRoom()">Create Room</button>
     <br><br>
     <button onclick="resetStorage()">Reset All Messages (Owner)</button>
+    <br><br>
+    <button onclick="updateProfile()">Update Profile</button>
     <h4>Upcoming Features</h4>
     <div class="static-room">User profiles & avatars</div>
     <div class="static-room">Image messages</div>
@@ -173,6 +175,15 @@ function switchRoom(newRoom){
 function resetStorage(){
     const key = prompt("Enter owner key to reset messages");
     socket.emit("reset storage", key);
+}
+
+function updateProfile(){
+    const newName = prompt("Enter new name", username) || username;
+    const newAvatar = prompt("Enter new avatar URL", avatar) || avatar;
+    username = newName;
+    avatar = newAvatar;
+    localStorage.setItem("chatProfile", JSON.stringify({ username, avatar }));
+    alert("Profile updated!");
 }
 </script>
 

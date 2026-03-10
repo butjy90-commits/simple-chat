@@ -45,10 +45,11 @@ io.on("connection", (socket) => {
         users[socket.id] = { name: username, color: userColor, room, avatar };
         socket.join(room);
 
-        // Send previous messages for this room
-        if(storedMessages[room]){
-            storedMessages[room].forEach(msg => socket.emit("chat message", msg));
-        }
+        // Ensure room exists
+        if(!storedMessages[room]) storedMessages[room] = [];
+
+        // Send full chat history for the room
+        socket.emit("chat history", storedMessages[room]);
 
         io.to(room).emit("system message", `${username} joined ${room}`);
     });
@@ -77,7 +78,7 @@ io.on("connection", (socket) => {
         io.to(user.room).emit("chat message", messageData);
     });
 
-    // Typing
+    // Typing indicator
     socket.on("typing", () => {
         const user = users[socket.id];
         if(user) socket.to(user.room).emit("typing", user.name);
@@ -110,6 +111,7 @@ io.on("connection", (socket) => {
             delete users[socket.id];
         }
     });
+
 });
 
 const PORT = process.env.PORT || 3000;

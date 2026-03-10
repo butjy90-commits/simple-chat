@@ -78,18 +78,20 @@ let avatar = profile.avatar;
 let room = "General";
 const rooms = {};
 
+// Join room
 function joinRoom(roomName){
     socket.emit("join", {username, room: roomName, avatar});
 }
-
 joinRoom(room);
 
+// DOM elements
 const messages = document.getElementById("messages");
 const input = document.getElementById("input");
 const typingDiv = document.getElementById("typing");
 const roomHeader = document.getElementById("room-name");
 let typingTimeout;
 
+// Add message
 function addMessage(data){
     const div = document.createElement("div");
     if(data.user){
@@ -113,12 +115,14 @@ function addMessage(data){
     messages.scrollTop = messages.scrollHeight;
 }
 
+// Send message
 function send(){
     if(input.value.trim()==="") return;
     socket.emit("chat message", input.value);
     input.value = "";
 }
 
+// Send image
 function sendImage(){
     const file = document.getElementById("imageInput").files[0];
     if(!file) return;
@@ -127,6 +131,7 @@ function sendImage(){
     reader.readAsDataURL(file);
 }
 
+// Typing indicator
 input.addEventListener("keypress", e => {
     if(e.key==="Enter") send();
     socket.emit("typing");
@@ -138,9 +143,19 @@ socket.on("typing", name => {
     typingTimeout = setTimeout(()=>typingDiv.textContent="",1000);
 });
 
+// Receive chat messages
 socket.on("chat message", addMessage);
+
+// Receive system messages
 socket.on("system message", msg => addMessage(msg));
 
+// Receive full history on join
+socket.on("chat history", history => {
+    messages.innerHTML = "";
+    history.forEach(addMessage);
+});
+
+// Room management
 function createRoom(){
     const name = prompt("Enter room name");
     if(!name) return;
@@ -161,22 +176,19 @@ function addRoomToSidebar(name){
 }
 
 function switchRoom(newRoom){
-    const roomData = rooms[newRoom] || {};
-    if(roomData.password){
-        const entered = prompt("Enter password for "+newRoom);
-        if(entered!==roomData.password){ alert("Wrong password!"); return; }
-    }
     room = newRoom;
     roomHeader.textContent = "Room: "+room;
     messages.innerHTML = "";
     joinRoom(room);
 }
 
+// Owner reset
 function resetStorage(){
     const key = prompt("Enter owner key to reset messages");
     socket.emit("reset storage", key);
 }
 
+// Update profile
 function updateProfile(){
     const newName = prompt("Enter new name", username) || username;
     const newAvatar = prompt("Enter new avatar URL", avatar) || avatar;
@@ -185,6 +197,7 @@ function updateProfile(){
     localStorage.setItem("chatProfile", JSON.stringify({ username, avatar }));
     alert("Profile updated!");
 }
+
 </script>
 
 </body>
